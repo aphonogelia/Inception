@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>AQUA MEMORIA — Descent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Darumadrop+One&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink:      #06080f;
+      --salt:     #dcd8cc;
+      --phosphor: #5191f0;
+      --accent:   rgb(151,195,247);
+      --danger:   #e05a7a;
+      --dim:      rgba(184,194,204,0.4);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--ink);
+      color: var(--salt);
+      font-family: 'DM Mono', monospace;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      user-select: none;
+      gap: 1rem;
+    }
+    body::after {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none; z-index: 999;
+    }
+    .bg-glow {
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 60% 40% at 80% 10%, rgba(42,70,110,0.3) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 60% at 10% 90%, rgba(20,80,120,0.15) 0%, transparent 50%);
+      pointer-events: none; z-index: 0;
+    }
+    .header { position: relative; z-index: 1; text-align: center; line-height: 1; }
+    .eyebrow { font-size: 0.52rem; letter-spacing: 0.35em; text-transform: uppercase; color: var(--phosphor); margin-bottom: 0.3rem; }
+    .title { font-family: 'Darumadrop One', sans-serif; font-size: clamp(1.8rem,5vw,3rem); color: var(--salt); }
+    .title span { color: var(--accent); }
+    .hud {
+      position: relative; z-index: 1;
+      display: flex; gap: 2rem;
+      font-size: 0.52rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--dim);
+    }
+    .hud-val { font-family: 'Darumadrop One', sans-serif; font-size: 1.2rem; color: var(--phosphor); display: block; line-height: 1; margin-top: 0.12rem; }
+    .hud-lives { color: var(--danger); }
+    .game-wrap { position: relative; z-index: 1; border: 1px solid rgba(90,180,204,0.15); box-shadow: 0 0 80px rgba(20,60,120,0.25), inset 0 0 60px rgba(0,0,0,0.5); flex-shrink: 0; }
+    canvas { display: block; }
+    .depth-bar-wrap { position: absolute; right: -12px; top: 0; width: 5px; height: 100%; background: rgba(90,180,204,0.06); }
+    .depth-bar-fill { position: absolute; top: 0; left: 0; width: 100%; background: linear-gradient(to bottom, var(--phosphor), var(--accent)); height: 0%; box-shadow: 0 0 8px var(--phosphor); transition: height 0.1s linear; }
+    .overlay {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.8rem;
+      background: rgba(6,8,15,0.88); backdrop-filter: blur(6px); transition: opacity 0.35s;
+    }
+    .overlay.hidden { opacity: 0; pointer-events: none; }
+    .ov-title { font-family: 'Darumadrop One', sans-serif; font-size: 2.2rem; color: var(--accent); text-align: center; }
+    .ov-sub { font-size: 0.52rem; letter-spacing: 0.25em; text-transform: uppercase; color: var(--dim); text-align: center; }
+    .ov-depth { font-family: 'Darumadrop One', sans-serif; font-size: 1.6rem; color: var(--phosphor); }
+    .btn { font-family: 'DM Mono', monospace; font-size: 0.56rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--accent); border: 1px solid rgba(126,206,206,0.3); background: transparent; padding: 0.6rem 1.6rem; cursor: pointer; transition: border-color 0.3s, background 0.3s; margin-top: 0.3rem; }
+    .btn:hover { border-color: var(--accent); background: rgba(151,195,247,0.07); }
+    .hint { font-size: 0.46rem; letter-spacing: 0.16em; color: var(--dim); opacity: 0.5; text-transform: uppercase; text-align: center; }
+    .footer-hint { position: relative; z-index: 1; font-size: 0.44rem; letter-spacing: 0.18em; text-transform: uppercase; color: var(--dim); opacity: 0.3; }
+  </style>
+</head>
+<body>
+<div class="bg-glow"></div>
+<div class="header">
+  <div class="eyebrow">Olfactory Atlas — Vol. I</div>
+  <div class="title">Aqua<span>Memoria</span></div>
+</div>
+<div class="hud">
+  <div>Depth<span class="hud-val" id="depthVal">0m</span></div>
+  <div>Best<span class="hud-val" id="bestVal">0m</span></div>
+  <div>Lives<span class="hud-val hud-lives" id="livesVal">♥♥♥</span></div>
+</div>
+<div class="game-wrap" id="gameWrap">
+  <canvas id="game"></canvas>
+  <div class="depth-bar-wrap"><div class="depth-bar-fill" id="depthBarFill"></div></div>
+  <div class="overlay" id="startScreen">
+    <div class="ov-title">Descend</div>
+    <div class="ov-sub">A poulpe falls into the abyss</div>
+    <button class="btn" id="startBtn">Begin Descent</button>
+    <div class="hint">← → Arrow keys or A / D &nbsp;·&nbsp; avoid everything</div>
+  </div>
+  <div class="overlay hidden" id="deathScreen">
+    <div class="ov-title">Consumed</div>
+    <div class="ov-sub">Depth reached</div>
+    <div class="ov-depth" id="finalDepth">0m</div>
+    <button class="btn" id="restartBtn">Resurface</button>
+    <div class="hint">Space to retry</div>
+  </div>
+</div>
+<div class="footer-hint">— the deeper you go, the darker it gets —</div>
+
+<script>
+const canvas  = document.getElementById('game');
+const ctx     = canvas.getContext('2d');
+const startScreen  = document.getElementById('startScreen');
+const deathScreen  = document.getElementById('deathScreen');
+const depthValEl   = document.getElementById('depthVal');
+const bestValEl    = document.getElementById('bestVal');
+const livesValEl   = document.getElementById('livesVal');
+const finalDepthEl = document.getElementById('finalDepth');
+const depthBarFill = document.getElementById('depthBarFill');
+
+const RATIO = 9/16;
+const GOAL_DEPTH = 3000;
+
+function sizeCanvas() {
+  const maxH = window.innerHeight * 0.56;
+  const maxW = window.innerWidth  * 0.9;
+  let h = Math.min(maxH, 520);
+  let w = h * RATIO;
+  if (w > maxW) { w = maxW; h = w / RATIO; }
+  canvas.width  = Math.floor(w);
+  canvas.height = Math.floor(h);
+}
+sizeCanvas();
+window.addEventListener('resize', () => { sizeCanvas(); });
+
+const W = () => canvas.width;
+const H = () => canvas.height;
+
+// ── STATE ──────────────────────────────────────────────────────
+let state = 'idle';
+let depth = 0, best = 0, lives = 3, frame = 0;
+let scrollSpeed = 1.4;
+let particles = [], obstacles = [], inkClouds = [];
+let invTimer = 0;
+const INV_FRAMES = 90;
+
+// ── PLAYER ─────────────────────────────────────────────────────
+const player = {
+  _x: 0, y: 0, r: 0,
+  vx: 0, maxVx: 0, accel: 0,
+  friction: 0.83,
+  tPhase: 0,
+  get x() { return this._x; },
+  set x(v) { this._x = Math.max(this.r, Math.min(W()-this.r, v)); },
+  initSize() {
+    this.r    = W() * 0.07;
+    this.maxVx = W() * 0.017;
+    this.accel = W() * 0.0038;
+  },
+  reset() {
+    this.initSize();
+    this._x = W() / 2;
+    this.y  = H() * 0.25;
+    this.vx = 0;
+    this.tPhase = 0;
+  },
+  update() {
+    this.initSize();
+    if (keys.left)  this.vx -= this.accel;
+    if (keys.right) this.vx += this.accel;
+    this.vx = Math.max(-this.maxVx, Math.min(this.maxVx, this.vx));
+    this.vx *= this.friction;
+    this.x += this.vx;
+    this.tPhase += 0.08;
+  },
+  draw(alpha) {
+    if (alpha === undefined) alpha = 1;
+    const blink = state === 'invincible' && Math.floor(invTimer/6)%2===0;
+    if (blink) return;
+    const cx = this._x, cy = this.y, r = this.r;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Glow
+    const g = ctx.createRadialGradient(cx,cy,0,cx,cy,r*2.2);
+    g.addColorStop(0,'rgba(81,145,240,0.2)'); g.addColorStop(1,'rgba(81,145,240,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.ellipse(cx,cy,r*2.2,r*2,0,0,Math.PI*2); ctx.fill();
+
+    // Tentacles
+    const nT = 8;
+    ctx.strokeStyle = 'rgba(151,195,247,0.7)';
+    ctx.lineWidth = Math.max(1, r*0.13);
+    ctx.lineCap = 'round';
+    for (let i=0; i<nT; i++) {
+      const spread = 0.72;
+      const angFrac = i/(nT-1);
+      const baseAngle = Math.PI*(0.12 + spread*angFrac);
+      const tentLen = r*(1.6 + 0.28*Math.sin(this.tPhase + i*0.7));
+      const waveMid = r*0.32*Math.sin(this.tPhase*1.2 + i);
+      const sx = cx + Math.cos(Math.PI - spread*0.5 + angFrac*spread)*r*0.58;
+      const sy = cy + r*0.48;
+      const ex = sx + Math.cos(baseAngle - Math.PI*0.5)*tentLen*0.55 + waveMid;
+      const ey = sy + tentLen;
+      const mx = (sx+ex)/2 + waveMid*1.5;
+      const my = sy + tentLen*0.48;
+      ctx.beginPath(); ctx.moveTo(sx,sy); ctx.quadraticCurveTo(mx,my,ex,ey); ctx.stroke();
+    }
+
+    // Mantle
+    ctx.shadowColor = '#5191f0'; ctx.shadowBlur = 14;
+    ctx.fillStyle = '#5191f0';
+    ctx.beginPath(); ctx.ellipse(cx,cy,r*0.72,r*0.92,0,0,Math.PI*2); ctx.fill();
+
+    // Dome highlight
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(151,195,247,0.45)';
+    ctx.beginPath(); ctx.ellipse(cx,cy-r*0.1,r*0.54,r*0.58,0,Math.PI,0); ctx.fill();
+
+    // Eyes
+    [[cx-r*0.22, cy-r*0.08],[cx+r*0.22, cy-r*0.08]].forEach(([ex2,ey2]) => {
+      ctx.shadowColor='#dcd8cc'; ctx.shadowBlur=10;
+      ctx.fillStyle='#dcd8cc';
+      ctx.beginPath(); ctx.arc(ex2,ey2,r*0.15,0,Math.PI*2); ctx.fill();
+      ctx.shadowBlur=0; ctx.fillStyle='#0a0e1a';
+      ctx.beginPath(); ctx.arc(ex2+r*0.03,ey2,r*0.08,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(255,255,255,0.7)';
+      ctx.beginPath(); ctx.arc(ex2+r*0.05,ey2-r*0.04,r*0.035,0,Math.PI*2); ctx.fill();
+    });
+    ctx.restore();
+  },
+  bounds() { return { x:this._x, y:this.y, r:this.r*0.52 }; }
+};
+
+// ── INPUT ──────────────────────────────────────────────────────
+const keys = {left:false, right:false};
+document.addEventListener('keydown', e => {
+  if (e.key==='ArrowLeft'  || e.key==='a' || e.key==='A') keys.left=true;
+  if (e.key==='ArrowRight' || e.key==='d' || e.key==='D') keys.right=true;
+  if (e.key===' ' && state==='dead') { e.preventDefault(); startGame(); }
+  if (e.key===' ' && state==='idle') { e.preventDefault(); startGame(); }
+});
+document.addEventListener('keyup', e => {
+  if (e.key==='ArrowLeft'  || e.key==='a' || e.key==='A') keys.left=false;
+  if (e.key==='ArrowRight' || e.key==='d' || e.key==='D') keys.right=false;
+});
+let touchStartX=0;
+canvas.addEventListener('touchstart',e=>{touchStartX=e.touches[0].clientX;},{passive:true});
+canvas.addEventListener('touchmove',e=>{
+  const dx=e.touches[0].clientX-touchStartX;
+  keys.left=dx<-8; keys.right=dx>8; e.preventDefault();
+},{passive:false});
+canvas.addEventListener('touchend',()=>{keys.left=false;keys.right=false;});
+
+// ── PARTICLES ──────────────────────────────────────────────────
+function spawnHit(x,y) {
+  for(let i=0;i<16;i++){
+    const a=(i/16)*Math.PI*2, s=1.5+Math.random()*3;
+    particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:1,r:2+Math.random()*3,
+      color:Math.random()<0.5?'#e05a7a':'#5191f0'});
+  }
+}
+function spawnInk(x,y) {
+  inkClouds.push({x,y,r:player.r*0.4,life:1});
+}
+function updateParticles() {
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i]; p.x+=p.vx; p.y+=p.vy; p.vy-=0.04; p.life-=0.033;
+    if(p.life<=0) particles.splice(i,1);
+  }
+}
+function drawParticles() {
+  particles.forEach(p=>{
+    ctx.save(); ctx.globalAlpha=p.life; ctx.fillStyle=p.color;
+    ctx.shadowColor=p.color; ctx.shadowBlur=8;
+    ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); ctx.restore();
+  });
+}
+function updateInk() {
+  for(let i=inkClouds.length-1;i>=0;i--){
+    const c=inkClouds[i]; c.r+=2; c.life-=0.014;
+    if(c.life<=0) inkClouds.splice(i,1);
+  }
+}
+function drawInk() {
+  inkClouds.forEach(c=>{
+    ctx.save(); ctx.globalAlpha=c.life*0.45;
+    const g=ctx.createRadialGradient(c.x,c.y,0,c.x,c.y,c.r);
+    g.addColorStop(0,'rgba(6,10,30,0.9)'); g.addColorStop(1,'rgba(6,10,30,0)');
+    ctx.fillStyle=g; ctx.beginPath(); ctx.arc(c.x,c.y,c.r,0,Math.PI*2); ctx.fill(); ctx.restore();
+  });
+}
+
+// ── OBSTACLES ──────────────────────────────────────────────────
+const OB_TYPES = [
+  {id:'fish_s',  nw:0.12,nh:0.042,weight:6,minD:0},
+  {id:'fish_m',  nw:0.19,nh:0.058,weight:5,minD:80},
+  {id:'jelly',   nw:0.11,nh:0.15, weight:4,minD:0},
+  {id:'angler',  nw:0.21,nh:0.14, weight:2,minD:350},
+  {id:'manta',   nw:0.29,nh:0.13, weight:2,minD:180},
+  {id:'urchin',  nw:0.09,nh:0.09, weight:3,minD:40},
+  {id:'shark',   nw:0.27,nh:0.11, weight:1,minD:550},
+];
+
+function pickType() {
+  const avail=OB_TYPES.filter(t=>depth>=t.minD);
+  const tot=avail.reduce((s,t)=>s+t.weight,0);
+  let r=Math.random()*tot;
+  for(const t of avail){r-=t.weight; if(r<=0) return t;}
+  return avail[avail.length-1];
+}
+
+let spawnCD=40;
+function spawnObstacle() {
+  const type=pickType();
+  const w=type.nw*W(), h=type.nh*W();
+  const fromSide=Math.random()<0.22;
+  let x,y,vx,vy;
+  if(fromSide){
+    const left=Math.random()<0.5;
+    x=left?-w:W()+w; y=H()*(0.3+Math.random()*0.55);
+    vx=left?scrollSpeed*0.75:-scrollSpeed*0.75; vy=-scrollSpeed*0.25;
+  } else {
+    x=w/2+Math.random()*(W()-w); y=H()+h;
+    vx=(Math.random()-0.5)*scrollSpeed*0.5;
+    vy=-(scrollSpeed*(0.65+Math.random()*0.45));
+  }
+  obstacles.push({x,y,w,h,vx,vy,type:type.id,phase:Math.random()*Math.PI*2});
+}
+
+function updateObstacles() {
+  spawnCD--;
+  const minGap=Math.max(16,52-depth*0.018);
+  if(spawnCD<=0){
+    spawnObstacle();
+    if(depth>280&&Math.random()<0.28) spawnObstacle();
+    spawnCD=minGap+Math.random()*18;
+  }
+  for(let i=obstacles.length-1;i>=0;i--){
+    const o=obstacles[i];
+    o.x+=o.vx; o.y+=o.vy; o.phase+=0.04;
+    if(o.y+o.h<-20||o.y>H()+20||o.x<-o.w-20||o.x>W()+20) obstacles.splice(i,1);
+  }
+}
+
+function drawOb(o) {
+  const {x,y,w,h,type,phase}=o;
+  const fy=y+Math.sin(phase)*2.5;
+  ctx.save();
+  switch(type){
+    case 'fish_s': case 'fish_m': {
+      const dir=o.vx>=0?1:-1;
+      const col=type==='fish_s'?'rgba(70,180,195,0.88)':'rgba(55,130,215,0.88)';
+      ctx.shadowColor=col; ctx.shadowBlur=9;
+      ctx.save(); ctx.translate(x+w/2,fy+h/2); ctx.scale(dir,1);
+      ctx.fillStyle=col;
+      ctx.beginPath(); ctx.ellipse(0,0,w*0.44,h*0.44,0,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle=col.replace('0.88','0.55');
+      ctx.beginPath(); ctx.moveTo(-w*0.37,0); ctx.lineTo(-w*0.6,-h*0.5); ctx.lineTo(-w*0.6,h*0.5); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#dcd8cc'; ctx.beginPath(); ctx.arc(w*0.18,-h*0.04,h*0.14,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#06080f'; ctx.beginPath(); ctx.arc(w*0.20,-h*0.04,h*0.07,0,Math.PI*2); ctx.fill();
+      ctx.restore(); break;
+    }
+    case 'jelly': {
+      ctx.shadowColor='rgba(195,150,255,0.5)'; ctx.shadowBlur=14;
+      const jg=ctx.createRadialGradient(x+w/2,fy+h*0.3,0,x+w/2,fy+h*0.3,w*0.5);
+      jg.addColorStop(0,'rgba(195,150,255,0.38)'); jg.addColorStop(1,'rgba(120,70,200,0.08)');
+      ctx.fillStyle=jg;
+      ctx.beginPath(); ctx.ellipse(x+w/2,fy+h*0.35,w*0.47,h*0.42,0,Math.PI,0); ctx.fill();
+      ctx.strokeStyle='rgba(195,150,255,0.65)'; ctx.lineWidth=1.2; ctx.stroke();
+      ctx.strokeStyle='rgba(175,120,240,0.4)'; ctx.lineWidth=1;
+      for(let t=0;t<6;t++){
+        const tx=x+w*0.14+t*(w*0.14);
+        const wv=Math.sin(phase+t*1.1)*4;
+        ctx.beginPath(); ctx.moveTo(tx,fy+h*0.7); ctx.quadraticCurveTo(tx+wv,fy+h*0.85,tx-wv,fy+h); ctx.stroke();
+      }
+      break;
+    }
+    case 'angler': {
+      ctx.shadowColor='rgba(255,90,50,0.4)'; ctx.shadowBlur=10;
+      const dir=o.vx>=0?1:-1;
+      ctx.save(); ctx.translate(x+w/2,fy+h/2); ctx.scale(dir,1);
+      ctx.fillStyle='rgba(35,20,45,0.92)'; ctx.strokeStyle='rgba(255,90,50,0.7)'; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.ellipse(0,0,w*0.45,h*0.42,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle='rgba(255,200,70,0.6)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(w*0.28,-h*0.38); ctx.lineTo(w*0.08,-h*0.78); ctx.stroke();
+      ctx.fillStyle='rgba(255,215,45,0.95)'; ctx.shadowColor='rgba(255,215,45,1)'; ctx.shadowBlur=12;
+      ctx.beginPath(); ctx.arc(w*0.08,-h*0.84,h*0.13,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='rgba(210,200,195,0.85)'; ctx.shadowBlur=0;
+      for(let t=0;t<4;t++){ctx.beginPath();ctx.moveTo(-w*0.34+t*w*0.2,h*0.28);ctx.lineTo(-w*0.27+t*w*0.2,h*0.48);ctx.lineTo(-w*0.21+t*w*0.2,h*0.28);ctx.fill();}
+      ctx.restore(); break;
+    }
+    case 'manta': {
+      ctx.shadowColor='rgba(55,95,175,0.35)'; ctx.shadowBlur=10;
+      ctx.save(); ctx.translate(x+w/2,fy+h/2);
+      const flap=Math.sin(phase)*0.2;
+      ctx.fillStyle='rgba(28,48,108,0.9)'; ctx.strokeStyle='rgba(80,130,220,0.45)'; ctx.lineWidth=1.5;
+      ctx.save(); ctx.rotate(-flap);
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.bezierCurveTo(-w*0.58,-h*0.3,-w*0.54,h*0.2,-w*0.05,h*0.1); ctx.fill(); ctx.stroke(); ctx.restore();
+      ctx.save(); ctx.rotate(flap);
+      ctx.beginPath(); ctx.moveTo(0,0); ctx.bezierCurveTo(w*0.58,-h*0.3,w*0.54,h*0.2,w*0.05,h*0.1); ctx.fill(); ctx.stroke(); ctx.restore();
+      ctx.beginPath(); ctx.ellipse(0,0,w*0.11,h*0.37,0,0,Math.PI*2); ctx.fill();
+      ctx.restore(); break;
+    }
+    case 'urchin': {
+      const ur=w*0.42;
+      ctx.shadowColor='rgba(215,70,95,0.5)'; ctx.shadowBlur=8;
+      ctx.fillStyle='rgba(55,15,35,0.92)';
+      ctx.beginPath(); ctx.arc(x+w/2,fy+h/2,ur,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='rgba(215,70,95,0.85)'; ctx.lineWidth=1.5;
+      for(let s=0;s<12;s++){
+        const a=(s/12)*Math.PI*2+phase*0.3;
+        ctx.beginPath();
+        ctx.moveTo(x+w/2+Math.cos(a)*ur,fy+h/2+Math.sin(a)*ur);
+        ctx.lineTo(x+w/2+Math.cos(a)*ur*1.62,fy+h/2+Math.sin(a)*ur*1.62);
+        ctx.stroke();
+      }
+      break;
+    }
+    case 'shark': {
+      ctx.shadowColor='rgba(75,135,195,0.3)'; ctx.shadowBlur=8;
+      const dir=o.vx>=0?1:-1;
+      ctx.save(); ctx.translate(x+w/2,fy+h/2); ctx.scale(dir,1);
+      ctx.fillStyle='rgba(65,85,118,0.92)'; ctx.strokeStyle='rgba(95,145,195,0.4)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.ellipse(0,0,w*0.47,h*0.37,0,0,Math.PI*2); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(w*0.04,-h*0.34); ctx.lineTo(w*0.14,-h*0.76); ctx.lineTo(w*0.29,-h*0.34); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(-w*0.37,0); ctx.lineTo(-w*0.53,-h*0.44); ctx.lineTo(-w*0.47,0); ctx.lineTo(-w*0.53,h*0.44); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#000'; ctx.beginPath(); ctx.arc(w*0.21,-h*0.06,h*0.1,0,Math.PI*2); ctx.fill();
+      ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(w*0.23,-h*0.08,h*0.04,0,Math.PI*2); ctx.fill();
+      ctx.restore(); break;
+    }
+  }
+  ctx.restore();
+}
+
+function circleRect(cx,cy,r, rx,ry,rw,rh) {
+  const nx=Math.max(rx,Math.min(cx,rx+rw)), ny=Math.max(ry,Math.min(cy,ry+rh));
+  const dx=cx-nx, dy=cy-ny;
+  return dx*dx+dy*dy < r*r;
+}
+
+// ── BACKGROUND ─────────────────────────────────────────────────
+let bgBubbles=[];
+for(let i=0;i<44;i++) bgBubbles.push({x:Math.random(),y:Math.random(),r:Math.random()*1.4+0.3,alpha:Math.random()*0.28+0.04,speed:Math.random()*0.003+0.001});
+
+function drawBG() {
+  const w=W(),h=H();
+  const df=Math.min(depth/1400,1);
+  const bg=ctx.createLinearGradient(0,0,0,h);
+  const r1=Math.round(8-df*6), g1=Math.round(16-df*12), b1=Math.round(42-df*32);
+  const r2=Math.round(4-df*2), g2=Math.round(7-df*3),   b2=Math.round(16-df*10);
+  bg.addColorStop(0,`rgb(${r1},${g1},${b1})`);
+  bg.addColorStop(1,`rgb(${r2},${g2},${b2})`);
+  ctx.fillStyle=bg; ctx.fillRect(0,0,w,h);
+
+  // Caustic rays
+  const ra=Math.max(0,0.032-df*0.028);
+  if(ra>0){
+    for(let i=0;i<4;i++){
+      const rx=(Math.sin(frame*0.012+i*1.9)*0.28+0.2+i*0.19)*w;
+      ctx.save(); ctx.globalAlpha=ra; ctx.strokeStyle='rgb(151,195,247)';
+      ctx.lineWidth=10+i*3; ctx.lineCap='round';
+      ctx.beginPath(); ctx.moveTo(rx,0); ctx.lineTo(rx+18,h); ctx.stroke(); ctx.restore();
+    }
+  }
+
+  // Kelp
+  for(let k=0;k<5;k++){
+    const kx=(k/5)*w+Math.sin(frame*0.012+k)*8;
+    ctx.strokeStyle=`rgba(25,80,50,${0.1+k*0.018})`; ctx.lineWidth=1.8+k*0.4; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(kx,h);
+    for(let s=0;s<8;s++){
+      const wv=Math.sin(frame*0.008+s*1.2+k*2)*9;
+      ctx.lineTo(kx+wv, h-s*(h/8));
+    }
+    ctx.stroke();
+  }
+
+  // Bubbles
+  bgBubbles.forEach(b=>{
+    b.y-=b.speed; if(b.y<0){b.y=1;b.x=Math.random();}
+    ctx.save(); ctx.globalAlpha=b.alpha; ctx.strokeStyle='rgb(151,195,247)'; ctx.lineWidth=b.r*0.6;
+    ctx.beginPath(); ctx.arc(b.x*w,b.y*h,b.r,0,Math.PI*2); ctx.stroke(); ctx.restore();
+  });
+
+  // Bottom fog
+  const fog=ctx.createLinearGradient(0,h*0.55,0,h);
+  fog.addColorStop(0,'rgba(4,6,14,0)'); fog.addColorStop(1,`rgba(4,6,14,${0.28+df*0.42})`);
+  ctx.fillStyle=fog; ctx.fillRect(0,h*0.55,w,h*0.45);
+}
+
+// ── HUD ────────────────────────────────────────────────────────
+function updateHUD() {
+  depthValEl.textContent  = Math.floor(depth)+'m';
+  bestValEl.textContent   = Math.floor(best)+'m';
+  livesValEl.textContent  = lives>0?'♥'.repeat(lives):'✕';
+  depthBarFill.style.height = Math.min((depth/GOAL_DEPTH)*100,100)+'%';
+}
+
+// ── GAME ───────────────────────────────────────────────────────
+function startGame() {
+  state='playing'; depth=0; lives=3; frame=0; scrollSpeed=1.4;
+  particles=[]; obstacles=[]; inkClouds=[]; spawnCD=40;
+  player.reset();
+  startScreen.classList.add('hidden');
+  deathScreen.classList.add('hidden');
+  updateHUD();
+}
+
+function loseLife() {
+  lives--;
+  updateHUD();
+  spawnHit(player._x, player.y);
+  spawnInk(player._x, player.y);
+  if(lives<=0){ endGame(); }
+  else { state='invincible'; invTimer=INV_FRAMES; }
+}
+
+function endGame() {
+  state='dead';
+  if(depth>best) best=depth;
+  updateHUD();
+  finalDepthEl.textContent=Math.floor(depth)+'m';
+  setTimeout(()=>deathScreen.classList.remove('hidden'), 500);
+}
+
+// ── LOOP ───────────────────────────────────────────────────────
+function loop() {
+  requestAnimationFrame(loop);
+  frame++;
+
+  if(state==='playing'||state==='invincible'||state==='idle'){
+    scrollSpeed = 1.4 + Math.sqrt(depth)*0.055;
+    if(state!=='idle') depth += scrollSpeed*0.042;
+
+    player.update();
+
+    if(state==='invincible'){
+      invTimer--;
+      if(invTimer<=0) state='playing';
+    }
+
+    if(state==='playing'||state==='invincible'){
+      updateObstacles();
+    }
+    updateParticles(); updateInk();
+
+    if(state==='playing'){
+      const pb=player.bounds();
+      for(const o of obstacles){
+        const ix=o.w*0.12, iy=o.h*0.12;
+        if(circleRect(pb.x,pb.y,pb.r, o.x+ix,o.y+iy, o.w-ix*2,o.h-iy*2)){
+          loseLife(); break;
+        }
+      }
+    }
+    updateHUD();
+  }
+
+  drawBG();
+  drawInk();
+  drawParticles();
+  if(state!=='idle') obstacles.forEach(drawOb);
+  player.draw(state==='dead'?0.28:1);
+
+  // Depth watermark
+  ctx.save();
+  ctx.font=`${Math.max(9,W()*0.038)}px 'DM Mono',monospace`;
+  ctx.fillStyle='rgba(184,194,204,0.16)';
+  ctx.textAlign='right';
+  ctx.fillText(Math.floor(depth)+'m', W()-7, H()-7);
+  ctx.restore();
+}
+
+document.getElementById('startBtn').addEventListener('click', e=>{ e.stopPropagation(); startGame(); });
+document.getElementById('restartBtn').addEventListener('click', e=>{ e.stopPropagation(); startGame(); });
+
+// Idle bob before first start
+(function idleBob(){
+  player.reset();
+  player.y = H()*0.3;
+})();
+
+loop();
+</script>
+</body>
+</html>

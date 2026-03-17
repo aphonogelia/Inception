@@ -1,0 +1,165 @@
+
+
+services:
+
+  mariadb:
+    build: ./requirements/mariadb
+    image: mariadb
+    restart: always
+    networks:      
+      - inception
+    expose: 
+      - "3306"
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/local/bin/db_healthcheck.sh"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    env_file: 
+      - .env
+    volumes: 
+      - mariadb_data:/var/lib/mysql
+    environment:
+      - MYSQL_PASSWORD_FILE=/run/secrets/mysql_password
+      - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/mysql_root_password
+    secrets:    
+      - mysql_root_password 
+      - mysql_password
+  
+  redis:
+    build: ./bonus/redis
+    image: redis
+    restart: always
+    networks:      
+      - inception 
+    expose: 
+      - "6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+
+
+  wordpress:
+    build: ./requirements/wordpress
+    image: wordpress
+    restart: always
+    networks:
+      - inception
+    expose:
+      - "9000"
+    depends_on:
+      mariadb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file: 
+      - .env
+    healthcheck:
+      test: ["CMD-SHELL", "php-fpm8.2 -t || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    volumes: 
+      - wordpress_data:/var/www/html
+    environment:
+      - USER_PASSWORD_FILE=/run/secrets/user_password
+      - SUPER_PASSWORD_FILE=/run/secrets/super_password
+      - MYSQL_ROOT_PASSWORD_FILE=/run/secrets/mysql_root_password
+      - MYSQL_PASSWORD_FILE=/run/secrets/mysql_password
+    secrets:    
+      - super_password 
+      - user_password
+      - mysql_password
+      - mysql_root_password
+
+  
+  static:
+    build: ./bonus/static
+    image: static
+    restart: always
+    networks:      
+      - inception 
+    expose: 
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+   
+  adminer:
+    build: ./bonus/adminer
+    image: adminer
+    restart: always
+    networks:      
+      - inception 
+    depends_on:
+      mariadb:
+        condition: service_healthy
+    expose: 
+      - "8081"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  nginx:
+    build: 
+      context: ./requirements/nginx
+      args:
+        - DOMAIN_NAME=${DOMAIN_NAME}
+        - STATIC_NAME=${STATIC_NAME}
+        - ADMINER_NAME=${ADMINER_NAME}
+    image: nginx
+    restart: always
+    networks:      
+      - inception 
+    ports: 
+      - "443:443"
+    depends_on:
+      wordpress:
+        condition: service_healthy 
+      static:
+        condition: service_healthy
+      adminer:
+        condition: service_healthy
+    volumes:
+      - wordpress_data:/var/www/html:ro
+
+
+networks:
+  inception:
+    driver: bridge
+
+volumes:
+  wordpress_data: 
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/htharrau/data/wordpress
+      o: bind
+  mariadb_data: 
+    driver: local
+    driver_opts:
+      type: none
+      device: /home/htharrau/data/mariadb
+      o: bind
+
+secrets:
+  user_password:
+    file: ../secrets/user_password.txt
+  super_password:
+    file: ../secrets/super_password.txt
+  mysql_password:
+    file: ../secrets/mysql_password.txt
+  mysql_root_password:
+    file: ../secrets/mysql_root_password.txt
+
+
+
