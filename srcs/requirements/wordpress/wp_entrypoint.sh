@@ -12,8 +12,6 @@ USR_PASSWORD=$(cat /run/secrets/user_password)
 if [ ! -f "/var/www/html/wp-config.php" ]; then
     echo "First boot detected: Installing WordPress as $(whoami)......"
 
-
-
     # 1. Wait for MariaDB to be healthy
     # Even with the YAML healthcheck, this loop ensures the script 
     # doesn't move forward until the network connection is "clean".

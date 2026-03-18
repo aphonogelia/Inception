@@ -9,7 +9,7 @@ mkdir -p /var/run/mysqld
 chown -R mysql:mysql /var/run/mysqld
 chown -R mysql:mysql /var/lib/mysql
 
-# 1. Check if the 'mysql' system database exists in the volume
+# 1. if the 'mysql' system database does not exist in the volume: we install the database files. This is necessary because the mysql_install_db command creates the system tables (users, permissions, etc.) that are required for MariaDB to function properly. If the database files already exist, we skip this step to avoid overwriting any existing data.
 if [ ! -d "/var/lib/mysql/mysql" ]; then
     echo "First boot detected: Initializing database files..."
     # This command creates the system tables (users, permissions, etc.)
@@ -20,7 +20,7 @@ else
 fi
 
 
-# 2. Check secret files exist
+# 2. Check secret files exist - otherwise error messsage
 if [ ! -f "$MYSQL_PASSWORD_FILE" ]; then
     echo "Error: $MYSQL_PASSWORD_FILE not found"
     exit 1
@@ -29,12 +29,10 @@ if [ ! -f "$MYSQL_ROOT_PASSWORD_FILE" ]; then
     echo "Error: $MYSQL_ROOT_PASSWORD_FILE not found"
     exit 1
 fi
-
-# Read passwords from secrets
+# get passwords from secrets
 DB_PASSWORD=$(cat $MYSQL_PASSWORD_FILE)
 ROOT_PASSWORD=$(cat $MYSQL_ROOT_PASSWORD_FILE)
-
-# Check passwords are not empty
+# check passwords not empty
 if [ -z "$DB_PASSWORD" ] || [ -z "$ROOT_PASSWORD" ]; then
     echo "Error: passwords cannot be empty"
     exit 1
@@ -45,7 +43,9 @@ fi
 mysqld_safe --skip-networking &
 MYSQL_PID=$!
 
-# wait for MariaDB to start up before running SQL commands
+# ping: wait for MariaDB to start up before running SQL commands
+# first install: connect root without password, 
+# not first install: connect with the password
 TIMEOUT=30
 COUNTER=0
 until mysqladmin -u root -p"${ROOT_PASSWORD}" --socket=/var/run/mysqld/mysqld.sock ping --silent 2>/dev/null \
@@ -60,10 +60,12 @@ until mysqladmin -u root -p"${ROOT_PASSWORD}" --socket=/var/run/mysqld/mysqld.so
 done
 
 
+# 4. if the "mydb" database does not exist, we run the SQL commands to create the 
+#database and user. If already exists, we skip this step to avoid overwriting data.
+# a - Creates the database and user.
+# b - Grants permissions and secures the root account
 
-
-
-# 4. Set the root password and create the database and user for WordPress.
+Set the root password and create the database and user for WordPress.
 if [ ! -d "/var/lib/mysql/${MYSQL_DATABASE}" ]; then
     echo "Configuring MariaDB for the first time..."
     mysql -u root << EOF
@@ -82,8 +84,9 @@ else
     #kill $MYSQL_PID
 fi
 
+# make sure the background process is done before we exec the main process. 
 wait $MYSQL_PID
 
-# The exec command replaces the current shell with the mysqld process, so that it becomes the main process of the container. This is important for proper signal handling and graceful shutdown of the container.
+# Replaces the shell script with mysqld as PID 1 using exec
 echo "MariaDB setup complete. Starting mysqld..."
 exec "$@" --user=mysql
