@@ -182,6 +182,6 @@ inception/
 
 ## Notes
 
-- All Docker images are built from `debian:bullseye` or `alpine` — no pre-made application images (no `wordpress`, `mysql`, or `php` from Docker Hub).
+- All Docker images are built from `debian:bookworm` — no pre-made application images (no `wordpress`, `mysql`, or `php` from Docker Hub).
 - Containers communicate exclusively over an internal Docker bridge network; only NGINX exposes a port to the host.
 - Passwords are never stored in the image layer or in `.env` — they are passed at runtime via Docker secrets.
